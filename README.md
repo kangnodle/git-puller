@@ -14,7 +14,7 @@
 
 ### 실행 환경
 
-- **운영체제**: Linux, macOS 또는 Windows WSL (POSIX 환경)
+- **운영체제**: Linux, macOS 또는 Windows (네이티브)
 - **Git**: `PATH`에서 실행 가능한 `git` 및 원격 저장소 인증 설정 (실제 업데이트 시)
 
 ### 빌드 및 개발 환경
@@ -184,9 +184,9 @@ apps/git-puller ──▶ packages/infrastructure ──▶ packages/application
   - `Program`: GADT 기반 `Request`와 연속(`Await`, `Concurrently`, `Exclusively`)으로 동시성 및 공통 디렉터리 단위 상호 배제를 순수하게 기술합니다.
   - `Event`: 진행률과 상세 로그 관찰을 위한 도메인 이벤트를 정의합니다.
 - **`packages/infrastructure` (`git-puller-infrastructure`)**
-  - `BatchRunner`가 `WorkerPool`과 `Exclusion`으로 `Program`을 실행하고, `Git`·`Filesystem`·`Process`·`Terminal` 어댑터를 제공합니다.
+  - `BatchRunner`가 `WorkerPool`과 `Exclusion`으로 `Program`을 실행하고, `Git`·`Filesystem`·`Process`·`Terminal` 어댑터를 제공합니다. 플랫폼별 구현(`PathStatus`, `OpenFileLimit`)은 `src-posix`·`src-windows`에서 cabal 조건으로 선택됩니다.
   - 저장소 검사는 `git rev-parse`와 `git status --porcelain=v2 --branch` 출력의 순수 파서(`GitOutput`)로 처리합니다.
-  - `Descriptors`가 시작 시 `RLIMIT_NOFILE` 소프트 한도를 작업 수에 맞는 값(`max 1024 (64 + 4 * jobs)`)으로 조정해 자식 프로세스 생성 시 `close_fds` 비용을 줄이고, `Encoding`이 무손실 UTF-8(`UTF-8//ROUNDTRIP`)을 설정합니다.
+  - `Descriptors`가 시작 시 POSIX 환경에서 `RLIMIT_NOFILE` 소프트 한도를 작업 수에 맞는 값(`max 1024 (64 + 4 * jobs)`)으로 조정해 자식 프로세스 생성 시 `close_fds` 비용을 줄이고, `Encoding`이 무손실 UTF-8(`UTF-8//ROUNDTRIP`)을 설정합니다.
 - **`apps/git-puller` (`git-puller`)**
   - 내부 라이브러리 `git-puller:cli`(`Cli.Arguments`, `Cli.Progress`, `Cli.Render`)가 옵션 해석, 진행률 상태 전이, 출력 포맷팅을 순수하게 처리하고, `app/Main.hs`가 어댑터를 조립해 실행합니다.
 
@@ -210,17 +210,17 @@ bash scripts/release.sh --bundle-only
 bash scripts/release.sh installers ./out
 ```
 
-### Windows (WSL)
+### Windows
 
-Windows 11, WSL(GHC `9.10.3` 도구 체인), Windows Inno Setup(`ISCC.exe`)이 필요합니다.
+Windows 10/11, Windows용 GHC `9.10.3` 및 cabal(예: ghcup), Git for Windows, Inno Setup(`ISCC.exe`)이 필요합니다. WSL은 필요하지 않습니다.
 
 ```powershell
-# .zip 및 Inno Setup 설치 프로그램(-setup.exe) 생성
+# 네이티브 git-puller.exe 빌드 후 .zip 및 Inno Setup 설치 프로그램(-setup.exe) 생성
 .\scripts\release.ps1
 ```
 
-설치 프로그램은 설치 디렉터리의 `bin`(Windows 런처 `git-puller.cmd`)을 사용자 `PATH`에 등록하며, Linux 바이너리는 `libexec`에 둡니다. 설치 후 새 터미널(PowerShell 또는 cmd)을 열고 WSL 경로를 전달해 실행합니다.
+설치 프로그램은 네이티브 `git-puller.exe`를 설치 디렉터리의 `bin`에 두고 이 디렉터리를 사용자 `PATH`에 등록합니다. 이전 WSL 기반 설치본의 런처와 `libexec`는 업그레이드 시 제거됩니다. 설치 후 새 터미널(PowerShell 또는 cmd)을 열고 Windows 경로를 전달해 실행합니다.
 
 ```powershell
-git-puller --dry-run /home/user/projects
+git-puller --dry-run C:\Users\user\projects
 ```

@@ -6,7 +6,7 @@ module GitPuller.Infrastructure.Git
   ) where
 
 import Control.Exception (try)
-import Control.Monad (void, when)
+import Control.Monad (unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT (..), runExceptT, throwE, withExceptT)
 import GitPuller.Domain.Repository
@@ -27,7 +27,7 @@ import GitPuller.Infrastructure.Process qualified as Process
 import System.Directory (canonicalizePath)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.FilePath (equalFilePath, (</>))
 
 type Git = ExceptT String IO
 
@@ -144,7 +144,9 @@ check = runExceptT (void (run ["--version"] >>= successful))
 inspectRepository :: FilePath -> IO (Either String Inspection)
 inspectRepository worktree = runExceptT $ do
   layout <- readLayout worktree
-  when (toplevel layout /= worktree) (throwE "Git worktree root does not match candidate")
+  unless
+    (equalFilePath (toplevel layout) worktree)
+    (throwE "Git worktree root does not match candidate")
   if null (superproject layout)
     then do
       shared <-

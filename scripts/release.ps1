@@ -15,17 +15,18 @@ function Invoke-ReleaseCommand {
 }
 
 if ($env:OS -ne 'Windows_NT') {
-    throw 'This release script requires Windows 11 with WSL and Inno Setup.'
+    throw 'This release script requires Windows with GHC, cabal and Inno Setup.'
 }
 
-$project = Join-Path (Split-Path $PSScriptRoot) 'apps/git-puller/git-puller.cabal'
+$workspace = Split-Path $PSScriptRoot
+$project = Join-Path $workspace 'apps/git-puller/git-puller.cabal'
 $versionFields = @(Select-String -LiteralPath $project -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$')
 if ($versionFields.Count -ne 1) {
     throw "Expected exactly one version: MAJOR.MINOR.PATCH field in $project."
 }
 $Version = $versionFields[0].Matches[0].Groups[1].Value
 
-$null = Get-Command wsl.exe, tar.exe -CommandType Application
+$null = Get-Command ghc, cabal, git -CommandType Application
 $InnoCompiler = @(
     (Get-Command $InnoCompiler -CommandType Application -ErrorAction SilentlyContinue).Source
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
@@ -35,48 +36,42 @@ $InnoCompiler = @(
 if (-not $InnoCompiler) {
     throw 'Inno Setup 6 compiler (ISCC.exe) not found. Install it with: winget install JRSoftware.InnoSetup'
 }
-$architecture = Invoke-ReleaseCommand wsl.exe @('--exec', 'uname', '-m')
-$windowsArchitecture = switch ($architecture) {
-    'x86_64' { 'x64os' }
-    'aarch64' { 'arm64' }
-    default { throw "Unsupported WSL architecture $architecture." }
+
+$compiler = Invoke-ReleaseCommand ghc @('--numeric-version')
+if ($compiler -ne '9.10.3') {
+    throw "Expected GHC 9.10.3, got $compiler."
 }
 
-$packaging = Join-Path $PSScriptRoot 'packaging'
-$launcher = Join-Path $packaging 'git-puller.ps1'
-$tokens = $null
-$parseErrors = $null
-$null = [System.Management.Automation.Language.Parser]::ParseFile($launcher, [ref]$tokens, [ref]$parseErrors)
-if ($parseErrors.Count -gt 0) {
-    throw ($parseErrors -join [Environment]::NewLine)
+$architecture, $windowsArchitecture = switch ($env:PROCESSOR_ARCHITECTURE) {
+    'AMD64' { 'x86_64', 'x64os' }
+    'ARM64' { 'aarch64', 'arm64' }
+    default { throw "Unsupported Windows architecture $env:PROCESSOR_ARCHITECTURE." }
 }
 
 $output = (New-Item -Path $OutputDirectory -ItemType Directory -Force).FullName
 $staging = Join-Path ([IO.Path]::GetTempPath()) ("git-puller-" + [guid]::NewGuid())
 $null = New-Item -Path $staging -ItemType Directory
 
+Push-Location $workspace
 try {
-    $releaseRunner = Join-Path $PSScriptRoot 'release.sh'
-    $wslRunner = Invoke-ReleaseCommand wsl.exe @('--exec', 'wslpath', '-u', $releaseRunner)
-    $wslStaging = Invoke-ReleaseCommand wsl.exe @('--exec', 'wslpath', '-u', $staging)
-    Invoke-ReleaseCommand wsl.exe @('--exec', 'bash', '-l', $wslRunner, '--bundle-only', $wslStaging)
+    Write-Host '==> Build'
+    Invoke-ReleaseCommand cabal @('build', '-O2', 'exe:git-puller')
+    $executable = Invoke-ReleaseCommand cabal @('list-bin', '-O2', 'exe:git-puller')
 
-    $linuxName = "git-puller-$Version-linux-$architecture"
-    $windowsName = "git-puller-$Version-windows-wsl-$architecture"
-    Invoke-ReleaseCommand tar.exe @('-xzf', (Join-Path $staging "$linuxName.tar.gz"), '-C', $staging)
+    Write-Host "`n==> Bundle"
+    $windowsName = "git-puller-$Version-windows-$architecture"
     $bundle = Join-Path $staging 'bundle'
-    Move-Item -LiteralPath (Join-Path $staging $linuxName) -Destination $bundle
-    $null = New-Item -Path (Join-Path $bundle 'libexec') -ItemType Directory
-    Move-Item -LiteralPath (Join-Path $bundle 'bin\git-puller') -Destination (Join-Path $bundle 'libexec')
-    Copy-Item -LiteralPath $launcher, (Join-Path $packaging 'git-puller.cmd') -Destination (Join-Path $bundle 'bin')
+    $bin = (New-Item -Path (Join-Path $bundle 'bin') -ItemType Directory).FullName
+    Copy-Item -LiteralPath $executable -Destination (Join-Path $bin 'git-puller.exe')
+    Invoke-ReleaseCommand (Join-Path $bin 'git-puller.exe') @('--dry-run', $staging)
 
     Write-Host "`n==> Package"
+    $packaging = Join-Path $PSScriptRoot 'packaging'
     $definition = Join-Path $staging 'windows.iss'
     Copy-Item -LiteralPath (Join-Path $packaging 'windows.iss') -Destination $definition
     @'
-Git Puller requires a WSL distribution with Git installed.
-Use a WSL distribution with the same architecture and a compatible glibc.
-Open a new terminal after installation, run git-puller, and pass WSL-style project paths.
+Git Puller requires Git for Windows available on PATH.
+Open a new terminal after installation and run git-puller with a Windows project path.
 '@ | Set-Content -LiteralPath (Join-Path $staging 'requirements.txt') -Encoding Ascii
     Invoke-ReleaseCommand $InnoCompiler @(
         "/DReleaseVersion=$Version",
@@ -90,5 +85,6 @@ Open a new terminal after installation, run git-puller, and pass WSL-style proje
     Move-Item -LiteralPath $zip, (Join-Path $staging "$windowsName-setup.exe") -Destination $output -Force
     Write-Host "`nArtifacts written to $output"
 } finally {
+    Pop-Location
     Remove-Item -LiteralPath $staging -Recurse -Force
 }

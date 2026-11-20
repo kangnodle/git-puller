@@ -6,8 +6,8 @@ git-puller-[0-9]*-macos-*.tar.gz
 git-puller_[0-9]*_*.deb
 git-puller-[0-9]*.rpm
 git-puller-[0-9]*-macos-*.pkg
-git-puller-[0-9]*-windows-wsl-*.zip
-git-puller-[0-9]*-windows-wsl-*-setup.exe
+git-puller-[0-9]*-windows-*.zip
+git-puller-[0-9]*-windows-*-setup.exe
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/

@@ -5,6 +5,7 @@ module GitPuller.Infrastructure.Process
 
 import Control.Exception (bracket, finally, try)
 import Data.Bifunctor (first)
+import Data.Foldable (traverse_)
 import GHC.IO.Encoding (getFileSystemEncoding)
 import GitPuller.Infrastructure.Failure qualified as Failure
 import System.Directory (getTemporaryDirectory, removeFile)
@@ -20,7 +21,7 @@ import System.IO
   )
 import System.Process
   ( CreateProcess (close_fds, env, std_err, std_in, std_out)
-  , StdStream (UseHandle)
+  , StdStream (CreatePipe, UseHandle)
   , proc
   , waitForProcess
   , withCreateProcess
@@ -56,15 +57,14 @@ run program arguments environment = first Failure.reason <$> try captured
       ((exit, errors), standard) <-
         withCapture $ \standardOutput ->
           withCapture $ \standardError ->
-            withFile "/dev/null" ReadMode $ \standardInput ->
-              withCreateProcess
-                (specification standardInput standardOutput standardError)
-                (\_ _ _ child -> waitForProcess child)
+            withCreateProcess
+              (specification standardOutput standardError)
+              (\standardInput _ _ child -> traverse_ hClose standardInput >> waitForProcess child)
       pure CompletedProcess {status = exit, output = standard, diagnostic = errors}
-    specification standardInput standardOutput standardError =
+    specification standardOutput standardError =
       (proc program arguments)
         { env = Just environment
-        , std_in = UseHandle standardInput
+        , std_in = CreatePipe
         , std_out = UseHandle standardOutput
         , std_err = UseHandle standardError
         , close_fds = True

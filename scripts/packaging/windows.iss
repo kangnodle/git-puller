@@ -4,7 +4,7 @@ AppName=Git Puller
 AppVersion={#ReleaseVersion}
 DefaultDirName={localappdata}\Programs\Git Puller
 PrivilegesRequired=lowest
-OutputBaseFilename=git-puller-{#ReleaseVersion}-windows-wsl-{#ReleaseArch}-setup
+OutputBaseFilename=git-puller-{#ReleaseVersion}-windows-{#ReleaseArch}-setup
 WizardStyle=modern
 ArchitecturesAllowed={#WindowsArch}
 InfoBeforeFile=requirements.txt
@@ -12,7 +12,10 @@ ChangesEnvironment=yes
 
 [InstallDelete]
 Type: files; Name: "{app}\bin\git-puller"
+Type: files; Name: "{app}\bin\git-puller.cmd"
+Type: files; Name: "{app}\bin\git-puller.ps1"
 Type: files; Name: "{app}\git-puller.ps1"
+Type: filesandordirs; Name: "{app}\libexec"
 
 [Files]
 Source: "bundle\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs

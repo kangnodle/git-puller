@@ -65,15 +65,15 @@ absorb :: Wave -> Listing -> Wave
 absorb wave listing = case entries listing of
   Left diagnostic -> include (Inaccessible (directory listing) diagnostic) wave
   Right listed
-    | any (isMetadata (directory listing)) listed -> worktree (directory listing) wave
+    | any (isMetadata (directory listing)) listed -> recordWorktree (directory listing) wave
     | otherwise -> foldl' visit wave listed
 
 isMetadata :: FilePath -> Entry -> Bool
 isMetadata parent entry =
   path entry == parent </> ".git" && kind entry `elem` [Directory, Regular]
 
-worktree :: FilePath -> Wave -> Wave
-worktree root wave = (include (Worktree root) wave) {discovered = discovered wave + 1}
+recordWorktree :: FilePath -> Wave -> Wave
+recordWorktree root wave = (include (Worktree root) wave) {discovered = discovered wave + 1}
 
 visit :: Wave -> Entry -> Wave
 visit wave entry = case kind entry of
