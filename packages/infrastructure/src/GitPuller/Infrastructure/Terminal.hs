@@ -6,8 +6,8 @@ module GitPuller.Infrastructure.Terminal
 
 import Control.Exception (finally)
 import Control.Monad (when)
-import System.Environment (lookupEnv)
-import System.IO (hFlush, hIsTerminalDevice, hPutStr, stderr)
+import GitPuller.Infrastructure.TerminalCapability (supportsEscapes)
+import System.IO (hFlush, hPutStr, stderr)
 
 data Terminal = Terminal
   { writeLine     :: String -> IO ()
@@ -15,11 +15,7 @@ data Terminal = Terminal
   }
 
 isInteractive :: IO Bool
-isInteractive = do
-  terminalType <- lookupEnv "TERM"
-  if terminalType `elem` [Nothing, Just "", Just "dumb"]
-    then pure False
-    else hIsTerminalDevice stderr
+isInteractive = supportsEscapes stderr
 
 emit :: String -> IO ()
 emit text = hPutStr stderr text >> hFlush stderr

@@ -14,6 +14,7 @@ library
   hs-source-dirs: src
   if os(windows)
     hs-source-dirs: src-windows
+    build-depends: Win32 >=2.13 && <2.15
   else
     hs-source-dirs: src-posix
     build-depends: unix >=2.7 && <2.9
@@ -33,6 +34,7 @@ library
     GitPuller.Infrastructure.OpenFileLimit
     GitPuller.Infrastructure.PathKind
     GitPuller.Infrastructure.PathStatus
+    GitPuller.Infrastructure.TerminalCapability
   build-depends:
     base >=4.20 && <5,
     containers >=0.6 && <0.9,
