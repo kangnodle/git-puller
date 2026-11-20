@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$runner = Join-Path $PSScriptRoot 'bin\git-puller'
+$runner = Join-Path (Split-Path $PSScriptRoot) 'libexec\git-puller'
 $wslRunner = & wsl.exe --exec wslpath -u $runner
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

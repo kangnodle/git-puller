@@ -66,7 +66,9 @@ try {
     Invoke-ReleaseCommand tar.exe @('-xzf', (Join-Path $staging "$linuxName.tar.gz"), '-C', $staging)
     $bundle = Join-Path $staging 'bundle'
     Move-Item -LiteralPath (Join-Path $staging $linuxName) -Destination $bundle
-    Copy-Item -LiteralPath $launcher -Destination $bundle
+    $null = New-Item -Path (Join-Path $bundle 'libexec') -ItemType Directory
+    Move-Item -LiteralPath (Join-Path $bundle 'bin\git-puller') -Destination (Join-Path $bundle 'libexec')
+    Copy-Item -LiteralPath $launcher, (Join-Path $packaging 'git-puller.cmd') -Destination (Join-Path $bundle 'bin')
 
     Write-Host "`n==> Package"
     $definition = Join-Path $staging 'windows.iss'
@@ -74,7 +76,7 @@ try {
     @'
 Git Puller requires a WSL distribution with Git installed.
 Use a WSL distribution with the same architecture and a compatible glibc.
-Run git-puller.ps1 from the installation directory and pass WSL-style project paths.
+Open a new terminal after installation, run git-puller, and pass WSL-style project paths.
 '@ | Set-Content -LiteralPath (Join-Path $staging 'requirements.txt') -Encoding Ascii
     Invoke-ReleaseCommand $InnoCompiler @(
         "/DReleaseVersion=$Version",

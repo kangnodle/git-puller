@@ -219,8 +219,8 @@ Windows 11, WSL(GHC `9.10.3` 도구 체인), Windows Inno Setup(`ISCC.exe`)이 �
 .\scripts\release.ps1
 ```
 
-설치 후에는 설치 디렉터리의 `git-puller.ps1`에 WSL 경로를 전달해 실행합니다.
+설치 프로그램은 설치 디렉터리의 `bin`(Windows 런처 `git-puller.cmd`)을 사용자 `PATH`에 등록하며, Linux 바이너리는 `libexec`에 둡니다. 설치 후 새 터미널(PowerShell 또는 cmd)을 열고 WSL 경로를 전달해 실행합니다.
 
 ```powershell
-.\git-puller.ps1 --dry-run /home/user/projects
+git-puller --dry-run /home/user/projects
 ```
