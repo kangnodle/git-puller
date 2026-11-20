@@ -1,0 +1,32 @@
+cabal-version: 3.0
+name: git-puller-domain
+version: 0.2.0
+synopsis: Worktree discovery, update state machine and outcome aggregation for git-puller
+maintainer: mingyuchoo
+build-type: Simple
+
+common shared
+  default-language: GHC2021
+  ghc-options: -Wall -Wcompat
+
+library
+  import: shared
+  hs-source-dirs: src
+  exposed-modules:
+    GitPuller.Domain.Discovery
+    GitPuller.Domain.Outcome
+    GitPuller.Domain.Repository
+    GitPuller.Domain.Update
+  build-depends:
+    base >=4.20 && <5,
+    filepath >=1.4 && <1.6
+
+test-suite domain-test
+  import: shared
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: Main.hs
+  build-depends:
+    base,
+    git-puller-domain,
+    hspec >=2.10 && <3
