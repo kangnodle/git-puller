@@ -78,7 +78,7 @@ cast list inspect update observe =
 
 batchRunnerSpec :: Spec
 batchRunnerSpec = describe "BatchRunner.run" $ do
-  it "discovers, inspects and reports without pulling during a dry run" $ do
+  it "discovers, inspects and reports without pulling or exploring inside a worktree" $ do
     inspected <- newIORef []
     pulled <- newIORef []
     events <- newIORef []
@@ -99,17 +99,15 @@ batchRunnerSpec = describe "BatchRunner.run" $ do
             (\location -> Right () <$ record pulled location)
             (record events)
         planned = Outcome "/" Planned
-        blocked = Outcome "/bad" (Failed "blocked")
-    BatchRunner.run ports 1 DryRun "/" `shouldReturn` [planned, blocked]
+    BatchRunner.run ports 1 DryRun "/" `shouldReturn` [planned]
     recorded inspected `shouldReturn` ["/"]
     recorded pulled `shouldReturn` []
     recorded events
       `shouldReturn` [ Scanning
                      , Discovered
-                     , Processing 2
+                     , Processing 1
                      , Inspecting "/"
                      , Processed planned
-                     , Processed blocked
                      ]
   it "pulls eligible worktrees in path order and keeps going after a failure" $ do
     pulled <- newIORef []

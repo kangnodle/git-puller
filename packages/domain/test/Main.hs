@@ -136,19 +136,29 @@ discoverySpec = describe "Discovery" $ do
             , Entry "/root/link" Other
             , Entry "/root/gone" Unavailable
             , Entry "/root/a" Directory
-            , Entry "/root/.git" Directory
+            , Entry "/root/b" Directory
             ]
         listing "/root/a" = Left "blocked"
-        listing "/root/z" = Right [Entry "/root/z/.git" Regular, Entry "/root/z/deep" Directory]
         listing directory = Right [Entry (directory <> "/.git") Regular]
     explore listing (Discovery.start "/root")
       `shouldBe` (
-                   [ Worktree "/root"
-                   , Inaccessible "/root/a" "blocked"
+                   [ Inaccessible "/root/a" "blocked"
+                   , Worktree "/root/b"
                    , Inaccessible "/root/gone" "cannot inspect path"
                    , Worktree "/root/z"
-                   , Worktree "/root/z/deep"
                    ]
-                 , [["/root"], ["/root/a", "/root/z"], ["/root/z/deep"]]
-                 , 3
+                 , [["/root"], ["/root/b", "/root/a", "/root/z"]]
+                 , 2
                  )
+  it "does not explore inside a worktree" $
+    rootListing
+      ( Right
+          [ Entry "/root/deep" Directory
+          , Entry "/root/gone" Unavailable
+          , Entry "/root/.git" Directory
+          ]
+      )
+      `shouldBe` (Complete [Worktree "/root"], 1)
+  it "keeps exploring past an unreadable .git entry" $
+    rootListing (Right [Entry "/root/.git" Unavailable, Entry "/root/deep" Directory])
+      `shouldBe` (Exploring ("/root/deep" :| []) [Inaccessible "/root/.git" "cannot inspect path"], 0)

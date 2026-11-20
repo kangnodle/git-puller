@@ -160,9 +160,10 @@ git init -q -b main "$root/empty/"$'with\nnewline\a\033'
 mkdir -p "$root/empty/broken/.git"
 trace="$root/git-trace"
 expect_exit 1 env GIT_TRACE="$trace" GIT_DIR="$root/remote" GIT_WORK_TREE="$root" "$cli" --dry-run "$root/empty"
-grep -Fq 'Summary updated=0 planned=0 skipped=7 failed=1' "$root/output"
-grep -Fq '한글/nested" unborn-branch' "$root/output"
-grep -Fq '한글/module" submodule' "$root/output"
+grep -Fq 'Summary updated=0 planned=0 skipped=5 failed=1' "$root/output"
+if grep -Fq '한글/' "$root/output"; then
+    exit 1
+fi
 grep -Fq 'with\nnewline\a\x1B;" unborn-branch' "$root/output"
 grep -Fq 'linked" no-upstream' "$root/output"
 grep -Fq 'rebasing" rebase-in-progress' "$root/output"

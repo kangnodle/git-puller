@@ -64,18 +64,20 @@ include candidate wave = wave {candidates = candidate : candidates wave}
 absorb :: Wave -> Listing -> Wave
 absorb wave listing = case entries listing of
   Left diagnostic -> include (Inaccessible (directory listing) diagnostic) wave
-  Right listed    -> foldl' (visit (directory listing)) wave listed
+  Right listed
+    | any (isMetadata (directory listing)) listed -> worktree (directory listing) wave
+    | otherwise -> foldl' visit wave listed
 
-visit :: FilePath -> Wave -> Entry -> Wave
-visit parent wave entry = case kind entry of
+isMetadata :: FilePath -> Entry -> Bool
+isMetadata parent entry =
+  path entry == parent </> ".git" && kind entry `elem` [Directory, Regular]
+
+worktree :: FilePath -> Wave -> Wave
+worktree root wave = (include (Worktree root) wave) {discovered = discovered wave + 1}
+
+visit :: Wave -> Entry -> Wave
+visit wave entry = case kind entry of
   Unavailable -> include (Inaccessible (path entry) "cannot inspect path") wave
-  Directory
-    | isMetadata -> worktree
-    | otherwise -> wave {unexplored = path entry : unexplored wave}
-  Regular
-    | isMetadata -> worktree
-    | otherwise -> wave
-  Other -> wave
-  where
-    isMetadata = path entry == parent </> ".git"
-    worktree = (include (Worktree parent) wave) {discovered = discovered wave + 1}
+  Directory   -> wave {unexplored = path entry : unexplored wave}
+  Regular     -> wave
+  Other       -> wave
