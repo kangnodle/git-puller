@@ -25,7 +25,16 @@ if ($versionFields.Count -ne 1) {
 }
 $Version = $versionFields[0].Matches[0].Groups[1].Value
 
-$null = Get-Command wsl.exe, tar.exe, $InnoCompiler -CommandType Application
+$null = Get-Command wsl.exe, tar.exe -CommandType Application
+$InnoCompiler = @(
+    (Get-Command $InnoCompiler -CommandType Application -ErrorAction SilentlyContinue).Source
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+if (-not $InnoCompiler) {
+    throw 'Inno Setup 6 compiler (ISCC.exe) not found. Install it with: winget install JRSoftware.InnoSetup'
+}
 $architecture = Invoke-ReleaseCommand wsl.exe @('--exec', 'uname', '-m')
 $windowsArchitecture = switch ($architecture) {
     'x86_64' { 'x64os' }
@@ -50,7 +59,7 @@ try {
     $releaseRunner = Join-Path $PSScriptRoot 'release.sh'
     $wslRunner = Invoke-ReleaseCommand wsl.exe @('--exec', 'wslpath', '-u', $releaseRunner)
     $wslStaging = Invoke-ReleaseCommand wsl.exe @('--exec', 'wslpath', '-u', $staging)
-    Invoke-ReleaseCommand wsl.exe @('--exec', 'bash', $wslRunner, '--bundle-only', $wslStaging)
+    Invoke-ReleaseCommand wsl.exe @('--exec', 'bash', '-l', $wslRunner, '--bundle-only', $wslStaging)
 
     $linuxName = "git-puller-$Version-linux-$architecture"
     $windowsName = "git-puller-$Version-windows-wsl-$architecture"

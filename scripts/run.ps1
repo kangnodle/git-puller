@@ -7,7 +7,7 @@ if ($env:OS -eq 'Windows_NT') {
         exit $LASTEXITCODE
     }
 
-    & wsl.exe --exec bash $wslRunner @args
+    & wsl.exe --exec bash -l $wslRunner @args
 } else {
     & bash $runner @args
 }
