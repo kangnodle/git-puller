@@ -14,7 +14,7 @@ require_commands() {
 stage_bundle() {
     local bundle=$1
     mkdir -p "$bundle/bin"
-    install -m 755 "$(cabal list-bin exe:git-puller)" "$bundle/bin/git-puller"
+    install -m 755 "$(cabal list-bin -O2 exe:git-puller)" "$bundle/bin/git-puller"
 }
 
 stage_installation() {
