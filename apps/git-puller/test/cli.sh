@@ -5,6 +5,7 @@ trap 'chmod u+rwx "$root/projects/blocked" "$root/reference-projects/blocked" 2>
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=Tester GIT_COMMITTER_NAME=Tester
 export GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_EMAIL=test@example.invalid
+unset NO_COLOR
 
 expect_exit() {
     expected=$1
@@ -77,19 +78,57 @@ test "$(git -C "$root/projects/z clean" rev-parse origin/main)" = "$old_head"
 test "$(git -C "$root/projects/a-diverged" rev-parse HEAD)" = "$diverged_head"
 test "$(git -C "$root/projects/a-diverged" rev-parse origin/main)" = "$old_head"
 
-if [ "$(uname -s)" = Linux ] && command -v script >/dev/null; then
-    printf -v command '%q ' "$cli" --dry-run "$root/projects"
-    TERM=xterm script -qec "$command" /dev/null >"$root/terminal"
+platform=$(uname -s)
+run_terminal() {
+    if [ "$platform" = Darwin ]; then
+        script -q /dev/null "$@"
+    else
+        local command
+        printf -v command '%q ' "$@"
+        SHELL=/bin/bash script -qec "$command" /dev/null
+    fi
+}
+
+if { [ "$platform" = Linux ] || [ "$platform" = Darwin ]; } && command -v script >/dev/null; then
+    TERM=xterm run_terminal "$cli" --dry-run "$root/projects" >"$root/terminal"
     grep -Fq 'Scanning: 5 repositories found' "$root/terminal"
     if grep -Fq 'processed "' "$root/terminal"; then
         exit 1
     fi
-    grep -Fq '[####################] 5/5 processed' "$root/terminal"
-    grep -Fq 'Summary updated=0 planned=2 skipped=3 failed=0' "$root/terminal"
+    grep -Fq $'\033[96m█' "$root/terminal"
+    grep -Fq $'\033[96m████\033[0m░░░░░░░░░░░░░░░░] 1/5 processed · 20%' "$root/terminal"
+    grep -Fq '5/5 processed · 100%' "$root/terminal"
+    grep -Fq $'\033[92mUpdated\033[0m │     0' "$root/terminal"
+    grep -Fq $'\033[94mPlanned\033[0m │     2' "$root/terminal"
+    grep -Fq $'\033[93mSkipped\033[0m │     3' "$root/terminal"
+    grep -Fq $'\033[91mFailed \033[0m │     0' "$root/terminal"
+    grep -Fq 'Total   │     5' "$root/terminal"
     if grep -Fq 'Inspecting ' "$root/terminal"; then
         exit 1
     fi
-    TERM=dumb script -qec "$command" /dev/null >"$root/dumb-terminal"
+
+    TERM=xterm NO_COLOR=1 run_terminal "$cli" --dry-run "$root/empty" >"$root/no-color-terminal"
+    grep -Fq '0/0 processed · 100%' "$root/no-color-terminal"
+    grep -Fq 'No Git worktrees found.' "$root/no-color-terminal"
+    grep -Fq 'Total   │     0' "$root/no-color-terminal"
+    if grep -Eq $'\033\\[[0-9;]*m' "$root/no-color-terminal"; then
+        exit 1
+    fi
+
+    TERM=xterm run_terminal sh -c 'exec "$1" --dry-run "$2" >"$3"' sh \
+        "$cli" "$root/projects" "$root/redirected-output" >"$root/progress-only"
+    grep -Fq $'\033[96m█' "$root/progress-only"
+    grep -Fxq 'Summary updated=0 planned=2 skipped=3 failed=0' "$root/redirected-output"
+    if LC_ALL=C grep -q "$(printf '\033')" "$root/redirected-output"; then
+        exit 1
+    fi
+
+    TERM=xterm run_terminal sh -c 'exec "$1" --dry-run "$2" 2>"$3"' sh \
+        "$cli" "$root/projects" "$root/redirected-error" >"$root/summary-only"
+    grep -Fq $'\033[94mPlanned\033[0m │     2' "$root/summary-only"
+    test ! -s "$root/redirected-error"
+
+    TERM=dumb run_terminal "$cli" --dry-run "$root/projects" >"$root/dumb-terminal"
     grep -Fq 'Summary updated=0 planned=2 skipped=3 failed=0' "$root/dumb-terminal"
     if LC_ALL=C grep -q "$(printf '\033')" "$root/dumb-terminal"; then
         exit 1

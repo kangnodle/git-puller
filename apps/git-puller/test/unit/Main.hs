@@ -88,15 +88,15 @@ progressSpec = describe "Progress.observe" $ do
   let planned = Outcome "a" Planned
   it "counts discovered repositories while surveying" $ do
     Progress.observe False Scanning Progress.initial
-      `shouldBe` (Surveying 0, [Status "Scanning: 0 repositories found"])
+      `shouldBe` (Surveying 0, [Status (Surveying 0)])
     Progress.observe False Discovered (Surveying 1)
-      `shouldBe` (Surveying 2, [Status "Scanning: 2 repositories found"])
+      `shouldBe` (Surveying 2, [Status (Surveying 2)])
   it "starts working through the announced number of repositories" $
     Progress.observe False (Processing 4) (Surveying 4)
-      `shouldBe` (Working 0 4, [Status "[--------------------] 0/4 processed"])
+      `shouldBe` (Working 0 4, [Status (Working 0 4)])
   it "advances the bar for each processed repository" $
     Progress.observe False (Processed planned) (Working 1 4)
-      `shouldBe` (Working 2 4, [Status "[##########----------] 2/4 processed"])
+      `shouldBe` (Working 2 4, [Status (Working 2 4)])
   it "narrates steps and outcomes only when verbose" $ do
     Progress.observe False (Inspecting "a") (Working 0 1) `shouldBe` (Working 0 1, [])
     Progress.observe True (Inspecting "a") (Working 0 1)
@@ -105,5 +105,5 @@ progressSpec = describe "Progress.observe" $ do
       `shouldBe` (Working 0 1, [Line "Pulling \"a\""])
     Progress.observe True (Processed planned) (Working 0 1)
       `shouldBe` ( Working 1 1
-                 , [Line "planned \"a\"", Status "[####################] 1/1 processed"]
+                 , [Line "planned \"a\"", Status (Working 1 1)]
                  )

@@ -7,15 +7,15 @@ module GitPuller.Infrastructure.Terminal
 import Control.Exception (finally)
 import Control.Monad (when)
 import GitPuller.Infrastructure.TerminalCapability (supportsEscapes)
-import System.IO (hFlush, hPutStr, stderr)
+import System.IO (Handle, hFlush, hPutStr, stderr)
 
 data Terminal = Terminal
   { writeLine     :: String -> IO ()
   , writeProgress :: String -> IO ()
   }
 
-isInteractive :: IO Bool
-isInteractive = supportsEscapes stderr
+isInteractive :: Handle -> IO Bool
+isInteractive = supportsEscapes
 
 emit :: String -> IO ()
 emit text = hPutStr stderr text >> hFlush stderr

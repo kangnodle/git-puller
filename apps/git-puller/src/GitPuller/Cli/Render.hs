@@ -3,10 +3,13 @@ module GitPuller.Cli.Render
   , reason
   , outcome
   , summary
+  , summaryTable
   , progress
+  , progressBar
   ) where
 
 import Data.Char (ord, toUpper)
+import Data.List (intercalate)
 import GitPuller.Domain.Outcome (Outcome (..), Status (..), Summary (..), summarize)
 import GitPuller.Domain.Repository (SkipReason (..))
 import Numeric (showHex)
@@ -60,18 +63,59 @@ summary outcomes =
   where
     counts = summarize outcomes
 
+summaryTable :: Bool -> [Outcome] -> String
+summaryTable colors outcomes =
+  intercalate "\n"
+    ( [border '┌' '┬' '┐', row id "Status" "Count", separator]
+        <> map renderCount statuses
+        <> [separator, row id "Total" totalText, border '└' '┴' '┘']
+    )
+  where
+    counts = summarize outcomes
+    statuses =
+      [ ("Updated", 92, updated counts)
+      , ("Planned", 94, planned counts)
+      , ("Skipped", 93, skipped counts)
+      , ("Failed", 91, failed counts)
+      ]
+    totalText = show (updated counts + planned counts + skipped counts + failed counts)
+    statusWidth = length "Updated"
+    countWidth = max (length "Count") (length totalText)
+    border left middle right =
+      [left] <> replicate (statusWidth + 2) '─' <> [middle]
+        <> replicate (countWidth + 2) '─' <> [right]
+    separator = border '├' '┼' '┤'
+    row style label value =
+      "│ " <> style (label <> replicate (statusWidth - length label) ' ')
+        <> " │ " <> replicate (countWidth - length value) ' ' <> value <> " │"
+    renderCount (label, color, count) = row (colorize colors color) label (show count)
+
 progress :: Int -> Int -> String
 progress completed total =
-  "["
-    <> replicate filled '#'
-    <> replicate (width - filled) '-'
-    <> "] "
-    <> show completed
-    <> "/"
-    <> show total
-    <> " processed"
+  "[" <> replicate filled '#' <> replicate (barWidth - filled) '-' <> "] "
+    <> processed completed total
   where
-    width = 20
-    filled
-      | total == 0 = width
-      | otherwise = width * completed `div` total
+    filled = progressUnits barWidth completed total
+
+progressBar :: Bool -> Int -> Int -> String
+progressBar colors completed total =
+  "[" <> colorize colors 96 (replicate filled '█') <> replicate (barWidth - filled) '░' <> "] "
+    <> processed completed total <> " · " <> show (progressUnits 100 completed total) <> "%"
+  where
+    filled = progressUnits barWidth completed total
+
+barWidth :: Int
+barWidth = 20
+
+progressUnits :: Int -> Int -> Int -> Int
+progressUnits units completed total
+  | total == 0 = units
+  | otherwise = fromInteger (toInteger units * toInteger completed `div` toInteger total)
+
+processed :: Int -> Int -> String
+processed completed total = show completed <> "/" <> show total <> " processed"
+
+colorize :: Bool -> Int -> String -> String
+colorize enabled color value
+  | enabled && not (null value) = "\ESC[" <> show color <> "m" <> value <> "\ESC[0m"
+  | otherwise = value

@@ -3,7 +3,7 @@ module GitPuller.Domain.Outcome
   , Outcome (..)
   , Summary (..)
   , summarize
-  , exitCode
+  , hasFailures
   ) where
 
 import GitPuller.Domain.Repository (SkipReason)
@@ -37,10 +37,8 @@ summarize = foldl' count (Summary 0 0 0 0)
       Skipped _ -> summary {skipped = skipped summary + 1}
       Failed _  -> summary {failed = failed summary + 1}
 
-exitCode :: [Outcome] -> Int
-exitCode outcomes
-  | any (isFailure . status) outcomes = 1
-  | otherwise = 0
+hasFailures :: [Outcome] -> Bool
+hasFailures = any (isFailure . status)
   where
     isFailure (Failed _) = True
     isFailure _          = False

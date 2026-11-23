@@ -5,33 +5,33 @@ module GitPuller.Application.Interaction.Update
 import GitPuller.Application.Event (Event (..))
 import GitPuller.Application.Program (Program, Request (..), await, exclusively, report)
 import GitPuller.Domain.Discovery (Candidate)
-import GitPuller.Domain.Discovery qualified as Discovery
-import GitPuller.Domain.Outcome (Outcome (..), Status)
-import GitPuller.Domain.Update (Mode, Phase (..), Signal (..))
+import GitPuller.Domain.Outcome (Outcome)
+import GitPuller.Domain.Update (InspectionPending, Mode, PullPending, Step (..))
 import GitPuller.Domain.Update qualified as Update
 
-settle :: FilePath -> Status -> Program Outcome
-settle location result = do
-  let outcome = Outcome {path = location, status = result}
-  report (Processed outcome)
-  pure outcome
+settle :: Outcome -> Program Outcome
+settle outcome = outcome <$ report (Processed outcome)
 
-inspect :: FilePath -> Program Signal
-inspect location = do
+inspect :: InspectionPending -> Program Outcome
+inspect pending = do
   report (Inspecting location)
-  Inspected <$> await (InspectRepository location)
+  result <- await (InspectRepository location)
+  case Update.afterInspection pending result of
+    Pending eligible -> pull eligible
+    Settled outcome  -> settle outcome
+  where
+    location = Update.worktreeToInspect pending
 
-pull :: FilePath -> FilePath -> Program Signal
-pull commonDirectory location = exclusively commonDirectory $ do
-  report (Pulling location)
-  Pulled <$> await (Pull location)
+pull :: PullPending -> Program Outcome
+pull pending = do
+  result <- exclusively (Update.commonDirectory pending) $ do
+    report (Pulling location)
+    await (Pull location)
+  settle (Update.afterPull pending result)
+  where
+    location = Update.worktreeToPull pending
 
 update :: Mode -> Candidate -> Program Outcome
-update mode candidate = conclude (Update.begin candidate)
-  where
-    location = Discovery.location candidate
-    conclude phase = case phase of
-      AwaitingInspection           -> inspect location >>= advance phase
-      AwaitingPull commonDirectory -> pull commonDirectory location >>= advance phase
-      Settled result               -> settle location result
-    advance phase = conclude . Update.transition mode phase
+update mode candidate = case Update.begin mode candidate of
+  Pending pending -> inspect pending
+  Settled outcome -> settle outcome

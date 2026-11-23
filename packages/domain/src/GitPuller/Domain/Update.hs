@@ -1,13 +1,18 @@
 module GitPuller.Domain.Update
   ( Mode (..)
-  , Phase (..)
-  , Signal (..)
+  , Step (..)
+  , InspectionPending
+  , PullPending
   , begin
-  , transition
+  , worktreeToInspect
+  , afterInspection
+  , worktreeToPull
+  , commonDirectory
+  , afterPull
   ) where
 
 import GitPuller.Domain.Discovery (Candidate (..))
-import GitPuller.Domain.Outcome (Status (..))
+import GitPuller.Domain.Outcome (Outcome (..), Status (..))
 import GitPuller.Domain.Repository
   ( Eligibility (..)
   , Inspection (..)
@@ -18,30 +23,39 @@ import GitPuller.Domain.Repository
 data Mode = DryRun | Apply
   deriving (Eq, Show)
 
-data Phase = AwaitingInspection
-           | AwaitingPull FilePath
-           | Settled Status
+data Step pending = Pending pending
+                  | Settled Outcome
   deriving (Eq, Show)
 
-data Signal = Inspected (Either String Inspection)
-            | Pulled (Either String ())
+data InspectionPending = InspectionPending FilePath Mode
   deriving (Eq, Show)
 
-begin :: Candidate -> Phase
-begin (Worktree _)                = AwaitingInspection
-begin (Inaccessible _ diagnostic) = Settled (Failed diagnostic)
+data PullPending = PullPending FilePath FilePath
+  deriving (Eq, Show)
 
-transition :: Mode -> Phase -> Signal -> Phase
-transition mode AwaitingInspection (Inspected inspection) = afterInspection mode inspection
-transition _ (AwaitingPull _) (Pulled result) =
-  Settled (either Failed (const Updated) result)
-transition _ phase _ = phase
+begin :: Mode -> Candidate -> Step InspectionPending
+begin mode (Worktree worktree) = Pending (InspectionPending worktree mode)
+begin _ (Inaccessible location diagnostic) = Settled (Outcome location (Failed diagnostic))
 
-afterInspection :: Mode -> Either String Inspection -> Phase
-afterInspection _ (Left diagnostic) = Settled (Failed diagnostic)
-afterInspection _ (Right Nested) = Settled (Skipped Submodule)
-afterInspection mode (Right (Standalone commonDirectory state)) =
-  case (classify state, mode) of
-    (Ineligible reason, _) -> Settled (Skipped reason)
-    (Eligible, DryRun)     -> Settled Planned
-    (Eligible, Apply)      -> AwaitingPull commonDirectory
+worktreeToInspect :: InspectionPending -> FilePath
+worktreeToInspect (InspectionPending worktree _) = worktree
+
+afterInspection :: InspectionPending -> Either String Inspection -> Step PullPending
+afterInspection (InspectionPending worktree mode) inspection = case inspection of
+  Left diagnostic -> settle (Failed diagnostic)
+  Right Nested -> settle (Skipped Submodule)
+  Right (Standalone shared state) -> case (classify state, mode) of
+    (Ineligible reason, _) -> settle (Skipped reason)
+    (Eligible, DryRun)     -> settle Planned
+    (Eligible, Apply)      -> Pending (PullPending worktree shared)
+  where
+    settle = Settled . Outcome worktree
+
+worktreeToPull :: PullPending -> FilePath
+worktreeToPull (PullPending worktree _) = worktree
+
+commonDirectory :: PullPending -> FilePath
+commonDirectory (PullPending _ shared) = shared
+
+afterPull :: PullPending -> Either String () -> Outcome
+afterPull pending result = Outcome (worktreeToPull pending) (either Failed (const Updated) result)

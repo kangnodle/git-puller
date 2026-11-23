@@ -15,6 +15,7 @@ import GitPuller.Application.Roles
   , Surveyor (..)
   , Updater (..)
   )
+import GitPuller.Application.Roles qualified as Roles
 import GitPuller.Application.UpdateWorktrees qualified as UpdateWorktrees
 import GitPuller.Domain.Discovery (Entry (..), EntryKind (..))
 import GitPuller.Domain.Outcome (Outcome (..), Status (..))
@@ -99,13 +100,13 @@ main = hspec $ do
   performSpec
 
 performSpec :: Spec
-performSpec = describe "UpdateWorktrees.perform" $
+performSpec = describe "Roles.perform" $
   it "routes each request to the role that answers it" $ do
-    UpdateWorktrees.perform cast (ListDirectory "/root") `shouldBe` Identity (Left "surveyor")
-    UpdateWorktrees.perform cast (InspectRepository "/root")
+    Roles.perform cast (ListDirectory "/root") `shouldBe` Identity (Left "surveyor")
+    Roles.perform cast (InspectRepository "/root")
       `shouldBe` Identity (Left "inspector")
-    UpdateWorktrees.perform cast (Pull "/root") `shouldBe` Identity (Left "updater")
-    UpdateWorktrees.perform cast (Report Scanning) `shouldBe` Identity ()
+    Roles.perform cast (Pull "/root") `shouldBe` Identity (Left "updater")
+    Roles.perform cast (Report Scanning) `shouldBe` Identity ()
 
 startSpec :: Spec
 startSpec = describe "UpdateWorktrees.start" $ do

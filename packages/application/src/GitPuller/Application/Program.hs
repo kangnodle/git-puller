@@ -50,5 +50,6 @@ report = await . Report
 concurrently :: [Program item] -> Program [item]
 concurrently programs = Concurrently programs Finished
 
+-- | Run the program while holding the resource. Exclusive scopes do not nest.
 exclusively :: FilePath -> Program item -> Program item
 exclusively resource program = Exclusively resource program Finished

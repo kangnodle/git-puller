@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: git-puller
-version: 0.2.0
+version: 0.2.1
 synopsis: Fast-forward Git worktrees under a directory
 maintainer: mingyuchoo
 build-type: Simple

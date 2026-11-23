@@ -13,6 +13,7 @@ import GitPuller.Application.Roles
   , Surveyor (..)
   , Updater (..)
   )
+import GitPuller.Application.UpdateWorktrees qualified as UpdateWorktrees
 import GitPuller.Cli.Arguments (Command (..), Options (..))
 import GitPuller.Cli.Arguments qualified as Arguments
 import GitPuller.Cli.Progress (Output (..), Progress)
@@ -27,25 +28,25 @@ import GitPuller.Infrastructure.Filesystem qualified as Filesystem
 import GitPuller.Infrastructure.Git qualified as Git
 import GitPuller.Infrastructure.Terminal (Terminal (..))
 import GitPuller.Infrastructure.Terminal qualified as Terminal
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr, stdout)
 
-display :: Terminal -> Output -> IO ()
-display terminal (Line text)   = writeLine terminal text
-display terminal (Status text) = writeProgress terminal text
+display :: (Progress -> String) -> Terminal -> Output -> IO ()
+display _ terminal (Line text) = writeLine terminal text
+display renderProgress terminal (Status progress) = writeProgress terminal (renderProgress progress)
 
-reporter :: Bool -> Terminal -> IORef Progress -> Event -> IO ()
-reporter isVerbose terminal state event =
+reporter :: Bool -> (Output -> IO ()) -> IORef Progress -> Event -> IO ()
+reporter isVerbose emit state event =
   atomicModifyIORef' state (Progress.observe isVerbose event)
-    >>= traverse_ (display terminal)
+    >>= traverse_ emit
 
 startupError :: String -> IO ExitCode
 startupError diagnostic = ExitFailure 2 <$ hPutStrLn stderr diagnostic
 
 runBatch :: Options -> FilePath -> (Event -> IO ()) -> IO [Outcome]
 runBatch options root reportEvent =
-  BatchRunner.run cast (jobs options) (mode options) root
+  BatchRunner.run cast (jobs options) (UpdateWorktrees.start (mode options) root)
   where
     cast =
       Cast
@@ -57,21 +58,22 @@ runBatch options root reportEvent =
 
 update :: Options -> FilePath -> IO ExitCode
 update options root = do
-  interactive <- Terminal.isInteractive
+  interactiveProgress <- Terminal.isInteractive stderr
+  interactiveSummary <- Terminal.isInteractive stdout
+  colors <- maybe True null <$> lookupEnv "NO_COLOR"
+  let bar = if interactiveProgress then Render.progressBar colors else Render.progress
+      summary = if interactiveSummary then Render.summaryTable colors else Render.summary
   outcomes <-
-    if interactive || verbose options
-      then Terminal.withProgress interactive $ \terminal -> do
+    if interactiveProgress || verbose options
+      then Terminal.withProgress interactiveProgress $ \terminal -> do
         state <- newIORef Progress.initial
-        runBatch options root (reporter (verbose options) terminal state)
+        let emit = display (Progress.render bar) terminal
+        runBatch options root (reporter (verbose options) emit state)
       else runBatch options root (const (pure ()))
   unless (verbose options) (traverse_ (putStrLn . Render.outcome False) outcomes)
   when (null outcomes) (putStrLn "No Git worktrees found.")
-  putStrLn (Render.summary outcomes)
-  pure
-    ( if Outcome.exitCode outcomes == 0
-        then ExitSuccess
-        else ExitFailure (Outcome.exitCode outcomes)
-    )
+  putStrLn (summary outcomes)
+  pure (if Outcome.hasFailures outcomes then ExitFailure 1 else ExitSuccess)
 
 run :: Options -> IO ExitCode
 run options = do

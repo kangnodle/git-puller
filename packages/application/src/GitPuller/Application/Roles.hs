@@ -1,12 +1,16 @@
+{-# LANGUAGE GADTs #-}
+
 module GitPuller.Application.Roles
   ( Surveyor (..)
   , Inspector (..)
   , Updater (..)
   , Observer (..)
   , Cast (..)
+  , perform
   ) where
 
 import GitPuller.Application.Event (Event)
+import GitPuller.Application.Program (Request (..))
 import GitPuller.Domain.Discovery (Entry)
 import GitPuller.Domain.Repository (Inspection)
 
@@ -24,3 +28,10 @@ data Cast effect = Cast
   , updater   :: Updater effect
   , observer  :: Observer effect
   }
+
+perform :: Cast effect -> Request reply -> effect reply
+perform cast request = case request of
+  ListDirectory location     -> listDirectory (surveyor cast) location
+  InspectRepository location -> inspectRepository (inspector cast) location
+  Pull location              -> pull (updater cast) location
+  Report event               -> notify (observer cast) event

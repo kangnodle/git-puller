@@ -15,6 +15,7 @@ import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (delete)
 import GitPuller.Application.Event (Event (..))
+import GitPuller.Application.Program (concurrently, exclusively)
 import GitPuller.Application.Roles
   ( Cast (..)
   , Inspector (..)
@@ -22,6 +23,7 @@ import GitPuller.Application.Roles
   , Surveyor (..)
   , Updater (..)
   )
+import GitPuller.Application.UpdateWorktrees qualified as UpdateWorktrees
 import GitPuller.Domain.Discovery (Entry (..), EntryKind (..))
 import GitPuller.Domain.Outcome (Outcome (..), Status (..))
 import GitPuller.Domain.Repository
@@ -41,6 +43,7 @@ import GitPuller.Infrastructure.WorkerPool qualified as WorkerPool
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import System.Timeout (timeout)
 import Test.Hspec (Spec, describe, hspec, it, shouldBe, shouldReturn, shouldThrow)
 
 main :: IO ()
@@ -99,7 +102,7 @@ batchRunnerSpec = describe "BatchRunner.run" $ do
             (\location -> Right () <$ record pulled location)
             (record events)
         planned = Outcome "/" Planned
-    BatchRunner.run ports 1 DryRun "/" `shouldReturn` [planned]
+    BatchRunner.run ports 1 (UpdateWorktrees.start DryRun "/") `shouldReturn` [planned]
     recorded inspected `shouldReturn` ["/"]
     recorded pulled `shouldReturn` []
     recorded events
@@ -121,7 +124,7 @@ batchRunnerSpec = describe "BatchRunner.run" $ do
             ( \location -> (if location == "/a" then Left "failed" else Right ()) <$ record pulled location
             )
             (const (pure ()))
-    BatchRunner.run ports 1 Apply "/"
+    BatchRunner.run ports 1 (UpdateWorktrees.start Apply "/")
       `shouldReturn` [Outcome "/a" (Failed "failed"), Outcome "/z" Updated]
     recorded pulled `shouldReturn` ["/a", "/z"]
   it "pulls independent repositories concurrently but shared worktrees serially" $ do
@@ -153,13 +156,23 @@ batchRunnerSpec = describe "BatchRunner.run" $ do
                 pure (if location == "/c" then Left "failed" else Right ())
             )
             (const (pure ()))
-    BatchRunner.run ports 4 Apply "/"
+    BatchRunner.run ports 4 (UpdateWorktrees.start Apply "/")
       `shouldReturn` [ Outcome "/a" Updated
                      , Outcome "/b" Updated
                      , Outcome "/c" (Failed "failed")
                      , Outcome "/d" Updated
                      ]
     readTVarIO overlapped `shouldReturn` False
+  it "rejects nested exclusive scopes instead of waiting for a held lock" $ do
+    let ports =
+          cast
+            (const (pure (Right [])))
+            (const (pure (Right clean)))
+            (const (pure (Right ())))
+            (const (pure ()))
+        nested = exclusively "/shared" $ concurrently [exclusively "/shared" (pure ()), pure ()]
+    timeout 1000000 (BatchRunner.run ports 2 nested)
+      `shouldThrow` (== userError "Cannot nest exclusive program scopes")
 
 workerPoolSpec :: Spec
 workerPoolSpec = describe "WorkerPool.mapConcurrently" $ do

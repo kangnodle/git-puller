@@ -4,6 +4,7 @@ module GitPuller.Cli.Progress
   , initial
   , transition
   , observe
+  , render
   ) where
 
 import GitPuller.Application.Event (Event (..))
@@ -14,7 +15,7 @@ data Progress = Surveying Int
   deriving (Eq, Show)
 
 data Output = Line String
-            | Status String
+            | Status Progress
   deriving (Eq, Show)
 
 initial :: Progress
@@ -30,7 +31,7 @@ observe :: Bool -> Event -> Progress -> (Progress, [Output])
 observe verbose event progress = (next, outputs)
   where
     next = transition event progress
-    status = Status (render next)
+    status = Status next
     narrate text = [Line text | verbose]
     outputs = case event of
       Scanning            -> [status]
@@ -40,6 +41,6 @@ observe verbose event progress = (next, outputs)
       Pulling location    -> narrate ("Pulling " <> Render.quoted location)
       Processed result    -> narrate (Render.outcome verbose result) <> [status]
 
-render :: Progress -> String
-render (Surveying discovered) = "Scanning: " <> show discovered <> " repositories found"
-render (Working completed total) = Render.progress completed total
+render :: (Int -> Int -> String) -> Progress -> String
+render _ (Surveying discovered) = "Scanning: " <> show discovered <> " repositories found"
+render bar (Working completed total) = bar completed total

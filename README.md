@@ -64,7 +64,7 @@ git-puller -- -projects
 
 ### 출력 형식
 
-기본 실행에서는 모든 작업이 끝난 뒤 `stdout`에 경로별 결과를 경로순으로 출력하고 마지막에 요약 줄을 출력합니다. 발견된 작업 트리가 없으면 `No Git worktrees found.`를 출력합니다.
+기본 실행에서는 모든 작업이 끝난 뒤 `stdout`에 경로별 결과를 경로순으로 출력합니다. ANSI를 지원하는 터미널에서는 상태별 건수와 전체 건수를 색상 표로 보여줍니다. 파일이나 파이프로 보내는 경우에는 아래와 같이 마지막에 요약 줄을 출력합니다. 발견된 작업 트리가 없으면 `No Git worktrees found.`를 출력합니다.
 
 ```text
 updated "/home/user/projects/app"
@@ -74,7 +74,7 @@ failed "/home/user/projects/diverged" fatal: Not possible to fast-forward, abort
 Summary updated=1 planned=1 skipped=1 failed=1
 ```
 
-대화형 터미널(`stderr`가 TTY이고 `TERM`이 비어 있거나 `dumb`가 아닌 경우)에서는 `stderr`에 스캔 수와 진행률 표시줄(`[#####---------------] 1/4 processed`)을 표시합니다. `--verbose` 사용 시 개별 저장소의 `Inspecting`, `Pulling`, 처리 결과가 `stderr`에 실시간 기록되며, 실패 메시지는 따옴표로 이스케이프됩니다.
+ANSI를 지원하는 터미널에 `stderr`가 연결되어 있으면 탐색 중에는 발견 수를, 처리 중에는 색상 막대와 완료 건수 및 백분율을 표시합니다. `NO_COLOR=1`을 설정하면 막대와 표를 색상 없이 표시합니다. `--verbose` 사용 시 개별 저장소의 `Inspecting`, `Pulling`, 처리 결과가 `stderr`에 실시간 기록되며, 실패 메시지는 따옴표로 이스케이프됩니다. `stderr`를 파일이나 파이프로 보내면 `--verbose` 진행 상태는 일반 텍스트로 기록됩니다.
 
 #### 건너뛰기 사유 (`skipped`)
 
@@ -153,10 +153,16 @@ GitHub Actions(`.github/workflows/ci.yml`)는 `ubuntu-latest`와 `macos-latest`�
 
 ## 아키텍처 및 프로젝트 구조
 
-워크스페이스는 `cabal.project`로 묶인 4개의 패키지로 구성되며, 순수 도메인·애플리케이션 계층과 부수효과 인프라 계층을 엄격히 분리합니다.
+[`cabal.project`](cabal.project)가 네 패키지를 하나의 워크스페이스로 묶습니다. 도메인과 애플리케이션은 상태와 실행 계획을 순수 함수로 계산합니다. 인프라가 파일시스템, Git 프로세스, 터미널, 동시성 처리를 맡고 CLI 실행 진입점이 각 계층을 조립합니다.
 
-```text
-apps/git-puller ──▶ packages/infrastructure ──▶ packages/application ──▶ packages/domain
+```mermaid
+graph LR
+  CLI[git-puller] --> Infrastructure[git-puller-infrastructure]
+  CLI --> Application[git-puller-application]
+  CLI --> Domain[git-puller-domain]
+  Infrastructure --> Application
+  Infrastructure --> Domain
+  Application --> Domain
 ```
 
 ```text
@@ -175,16 +181,17 @@ apps/git-puller ──▶ packages/infrastructure ──▶ packages/application
   - 부수효과가 없는 순수 도메인 모델입니다.
   - `Discovery`: 디렉터리 탐색 상태 머신(`Exploring | Complete`). 한 레벨의 목록 결과를 모아 다음 탐색 단계를 계산합니다.
   - `Repository`: 저장소 상태와 업데이트 가능 여부(`classify`), 건너뛰기 사유 우선순위를 정의합니다.
-  - `Update`: 작업 트리 단건 수명 주기 상태 머신(`AwaitingInspection → AwaitingPull → Settled`).
-  - `Outcome`: 경로별 결과 집계(`summarize`)와 종료 코드 계산(`exitCode`)을 담당합니다.
+  - `Update`: `begin`이 경로와 실행 모드를 담은 검사 대기 상태를 만들거나 실패 결과를 확정합니다. 순수 전이 함수 `afterInspection`은 검사 대기 상태와 검사 결과를 받아 pull 대기 상태 또는 확정 결과를 반환합니다. `afterPull`은 pull 대기 상태와 pull 결과를 받아 최종 `Outcome`을 반환합니다. 각 전이 함수가 요구하는 대기 상태가 다르므로 검사 전에 pull 결과를 전달하면 컴파일 오류가 발생합니다.
+  - `Outcome`: 경로별 결과를 집계하고(`summarize`), 배치에 실패가 있는지 판정합니다(`hasFailures`). CLI가 이 판정을 프로세스 종료 코드로 변환합니다.
 - **`packages/application` (`git-puller-application`)**
   - DCI(Data, Context, Interaction) 구조로 유스케이스를 조합합니다.
-  - `UpdateWorktrees` (Context): `start`가 `Interaction.Survey`와 `Interaction.Update`를 엮어 순수한 `Program` 값을 생성하고, `perform`이 각 `Request`를 해당 역할에 위임합니다.
-  - `Roles`: 효과 타입에 다형적인 역할 포트(`Surveyor`, `Inspector`, `Updater`, `Observer`)와 묶음(`Cast`)을 정의합니다.
+  - Data는 도메인의 탐색 상태, 작업 트리 상태와 처리 결과입니다.
+  - Context인 `UpdateWorktrees.start`는 탐색, 처리 대상 수 통지, 병렬 업데이트를 순서대로 기술하는 `Program` 값을 생성합니다.
+  - Interaction인 `Survey`와 `Update`는 도메인 상태에 따라 역할에 보낼 요청을 선택합니다. `Surveyor`는 디렉터리를 읽고, `Inspector`는 저장소 상태를 확인하고, `Updater`는 pull을 수행하며, `Observer`는 진행 이벤트를 받습니다. `Roles.perform`이 각 요청을 `Cast`에 주입된 역할 구현에 전달합니다.
   - `Program`: GADT 기반 `Request`와 연속(`Await`, `Concurrently`, `Exclusively`)으로 동시성 및 공통 디렉터리 단위 상호 배제를 순수하게 기술합니다.
-  - `Event`: 진행률과 상세 로그 관찰을 위한 도메인 이벤트를 정의합니다.
+  - `Event`: 진행률과 상세 로그를 위한 애플리케이션 이벤트를 정의합니다.
 - **`packages/infrastructure` (`git-puller-infrastructure`)**
-  - `BatchRunner`가 `WorkerPool`과 `Exclusion`으로 `Program`을 실행하고, `Git`·`Filesystem`·`Process`·`Terminal` 어댑터를 제공합니다. 플랫폼별 구현(`PathStatus`, `OpenFileLimit`)은 `src-posix`·`src-windows`에서 cabal 조건으로 선택됩니다.
+  - `BatchRunner`는 전달받은 `Program`과 `Cast`를 실행합니다. `WorkerPool`이 동시 작업 수를 제한하고 `Exclusion`이 같은 Git 공통 디렉터리를 쓰는 pull을 직렬화합니다. `Git`·`Filesystem`·`Process`·`Terminal`이 외부 시스템과 통신합니다. 플랫폼별 구현은 `src-posix`·`src-windows`에서 Cabal 조건으로 선택됩니다.
   - 저장소 검사는 `git rev-parse`와 `git status --porcelain=v2 --branch` 출력의 순수 파서(`GitOutput`)로 처리합니다.
   - `Descriptors`가 시작 시 POSIX 환경에서 `RLIMIT_NOFILE` 소프트 한도를 작업 수에 맞는 값(`max 1024 (64 + 4 * jobs)`)으로 조정해 자식 프로세스 생성 시 `close_fds` 비용을 줄이고, `Encoding`이 무손실 UTF-8(`UTF-8//ROUNDTRIP`)을 설정합니다.
 - **`apps/git-puller` (`git-puller`)**

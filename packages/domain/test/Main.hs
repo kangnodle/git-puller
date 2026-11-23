@@ -23,9 +23,9 @@ import GitPuller.Domain.Repository
   , State (..)
   , classify
   )
-import GitPuller.Domain.Update (Mode (..), Phase (..), Signal (..))
+import GitPuller.Domain.Update (Mode (..), Step (..))
 import GitPuller.Domain.Update qualified as Update
-import Test.Hspec (Spec, describe, hspec, it, shouldBe)
+import Test.Hspec (Spec, describe, expectationFailure, hspec, it, shouldBe)
 
 main :: IO ()
 main = hspec $ do
@@ -63,44 +63,49 @@ outcomeSpec = describe "Outcome" $ do
   it "counts every status" $
     Outcome.summarize [Outcome "a" Updated, Outcome "b" (Skipped Dirty), Outcome "c" Updated]
       `shouldBe` Summary {updated = 2, planned = 0, skipped = 1, failed = 0}
-  it "exits with 1 when any outcome failed" $
-    Outcome.exitCode outcomes `shouldBe` 1
-  it "exits with 0 without failures" $ do
-    Outcome.exitCode [] `shouldBe` 0
-    Outcome.exitCode [Outcome "a" (Skipped Dirty)] `shouldBe` 0
+  it "identifies a batch with a failed outcome" $
+    Outcome.hasFailures outcomes `shouldBe` True
+  it "accepts a batch without failures" $ do
+    Outcome.hasFailures [] `shouldBe` False
+    Outcome.hasFailures [Outcome "a" (Skipped Dirty)] `shouldBe` False
 
 updateSpec :: Spec
 updateSpec = describe "Update" $ do
-  let inspected = Inspected . Right . Standalone "/a/.git"
-  it "begins a worktree awaiting inspection" $
-    Update.begin (Worktree "/a") `shouldBe` AwaitingInspection
+  let standalone = Right . Standalone "/shared/.git"
+      inspect mode reply = case Update.begin mode (Worktree "/a") of
+        Pending inspection -> Update.afterInspection inspection reply
+        Settled outcome    -> Settled outcome
+      pulled reply = case inspect Apply (standalone clean) of
+        Pending pull -> Just (Update.afterPull pull reply)
+        Settled _    -> Nothing
+  it "carries the discovered worktree path into inspection" $
+    case Update.begin Apply (Worktree "/a") of
+      Pending inspection -> Update.worktreeToInspect inspection `shouldBe` "/a"
+      Settled outcome    -> expectationFailure ("unexpected outcome: " <> show outcome)
   it "begins an inaccessible directory as settled with its failure" $
-    Update.begin (Inaccessible "/a" "blocked") `shouldBe` Settled (Failed "blocked")
+    Update.begin Apply (Inaccessible "/a" "blocked")
+      `shouldBe` Settled (Outcome "/a" (Failed "blocked"))
   it "plans an eligible repository during a dry run" $
-    Update.transition DryRun AwaitingInspection (inspected clean) `shouldBe` Settled Planned
-  it "awaits a pull of an eligible repository under its common directory when applying" $
-    Update.transition Apply AwaitingInspection (inspected clean)
-      `shouldBe` AwaitingPull "/a/.git"
+    inspect DryRun (standalone clean) `shouldBe` Settled (Outcome "/a" Planned)
+  it "keeps the worktree path and its shared Git directory distinct when applying" $
+    case inspect Apply (standalone clean) of
+      Pending pull ->
+        (Update.worktreeToPull pull, Update.commonDirectory pull)
+          `shouldBe` ("/a", "/shared/.git")
+      Settled outcome -> expectationFailure ("unexpected outcome: " <> show outcome)
   for_ [DryRun, Apply] $ \mode -> describe (show mode) $ do
-    let transition = Update.transition mode
     it "skips an ineligible repository" $
-      transition AwaitingInspection (inspected clean {dirty = True})
-        `shouldBe` Settled (Skipped Dirty)
+      inspect mode (standalone clean {dirty = True})
+        `shouldBe` Settled (Outcome "/a" (Skipped Dirty))
     it "skips a submodule" $
-      transition AwaitingInspection (Inspected (Right Nested))
-        `shouldBe` Settled (Skipped Submodule)
+      inspect mode (Right Nested) `shouldBe` Settled (Outcome "/a" (Skipped Submodule))
     it "fails when inspection fails" $
-      transition AwaitingInspection (Inspected (Left "inspection failed"))
-        `shouldBe` Settled (Failed "inspection failed")
-    it "marks a successful pull as updated" $
-      transition (AwaitingPull "/a/.git") (Pulled (Right ())) `shouldBe` Settled Updated
-    it "marks a failed pull as failed" $
-      transition (AwaitingPull "/a/.git") (Pulled (Left "pull failed"))
-        `shouldBe` Settled (Failed "pull failed")
-    it "ignores a signal the current phase does not await" $ do
-      transition AwaitingInspection (Pulled (Right ())) `shouldBe` AwaitingInspection
-      transition (AwaitingPull "/a/.git") (inspected clean) `shouldBe` AwaitingPull "/a/.git"
-      transition (Settled Planned) (Pulled (Left "late")) `shouldBe` Settled Planned
+      inspect mode (Left "inspection failed")
+        `shouldBe` Settled (Outcome "/a" (Failed "inspection failed"))
+  it "marks a successful pull as updated at the worktree path" $
+    pulled (Right ()) `shouldBe` Just (Outcome "/a" Updated)
+  it "marks a failed pull as failed at the worktree path" $
+    pulled (Left "pull failed") `shouldBe` Just (Outcome "/a" (Failed "pull failed"))
 
 discoverySpec :: Spec
 discoverySpec = describe "Discovery" $ do
