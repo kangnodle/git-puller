@@ -63,6 +63,7 @@ try {
     $bundle = Join-Path $staging 'bundle'
     $bin = (New-Item -Path (Join-Path $bundle 'bin') -ItemType Directory).FullName
     Copy-Item -LiteralPath $executable -Destination (Join-Path $bin 'git-puller.exe')
+    Copy-Item -LiteralPath (Join-Path $workspace 'LICENSE') -Destination $bundle
     Invoke-ReleaseCommand (Join-Path $bin 'git-puller.exe') @('--dry-run', $staging)
 
     Write-Host "`n==> Package"

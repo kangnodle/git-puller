@@ -3,6 +3,8 @@ name: git-puller-infrastructure
 version: 0.2.0
 synopsis: Git, filesystem, process and terminal adapters for git-puller
 maintainer: mingyuchoo
+license: LicenseRef-Proprietary
+license-file: LICENSE
 build-type: Simple
 
 common shared

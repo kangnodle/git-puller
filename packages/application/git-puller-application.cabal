@@ -3,6 +3,8 @@ name: git-puller-application
 version: 0.2.0
 synopsis: Update use case, interactions and roles for git-puller
 maintainer: mingyuchoo
+license: LicenseRef-Proprietary
+license-file: LICENSE
 build-type: Simple
 
 common shared

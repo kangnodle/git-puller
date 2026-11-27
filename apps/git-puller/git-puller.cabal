@@ -3,6 +3,8 @@ name: git-puller
 version: 0.2.1
 synopsis: Fast-forward Git worktrees under a directory
 maintainer: mingyuchoo
+license: LicenseRef-Proprietary
+license-file: LICENSE
 build-type: Simple
 extra-source-files:
   test/cli.sh

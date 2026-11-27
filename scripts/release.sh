@@ -15,6 +15,7 @@ stage_bundle() {
     local bundle=$1
     mkdir -p "$bundle/bin"
     install -m 755 "$(cabal list-bin -O2 exe:git-puller)" "$bundle/bin/git-puller"
+    install -m 644 LICENSE "$bundle/LICENSE"
 }
 
 stage_installation() {
@@ -38,6 +39,8 @@ CONTROL
     printf 'Source: git-puller\n\nPackage: git-puller\nArchitecture: any\n' >"$staging_root/debian/control"
     dependencies=$(cd "$staging_root" && dpkg-shlibdeps -O -edebian/git-puller/usr/bin/git-puller)
     printf 'Depends: git, %s\n' "${dependencies#shlibs:Depends=}" >>"$root/DEBIAN/control"
+    mkdir -p "$root/usr/share/doc/git-puller"
+    install -m 644 LICENSE "$root/usr/share/doc/git-puller/copyright"
     dpkg-deb --root-owner-group --build "$root" "$output/git-puller_${version}_${architecture}.deb"
 }
 
@@ -45,7 +48,7 @@ package_rpm() {
     local root=$1 version=$2 output=$3 topdir="$3/rpmbuild"
     mkdir -p "$topdir"
     GIT_PULLER_PACKAGE_ROOT="$root" rpmbuild -bb --nodeps \
-        --define "_topdir $topdir" --define "release_version $version" \
+        --define "_topdir $topdir" --define "_sourcedir $PWD" --define "release_version $version" \
         scripts/packaging/git-puller.spec
     cp "$topdir"/RPMS/*/git-puller-*.rpm "$output/"
 }
@@ -124,6 +127,8 @@ main() (
             mv -- "$staging"/*.deb "$staging"/*.rpm "$output/"
         else
             stage_installation "$staging/root" "$bundle" /usr/local
+            mkdir -p "$staging/root/usr/local/share/doc/git-puller"
+            install -m 644 "$bundle/LICENSE" "$staging/root/usr/local/share/doc/git-puller/LICENSE"
             "$staging/root/usr/local/bin/git-puller" --dry-run "$staging"
             pkgbuild --root "$staging/root" --identifier org.mingyuchoo.git-puller \
                 --version "$version" --install-location / "$staging/$name.pkg"

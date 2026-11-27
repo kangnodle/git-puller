@@ -231,3 +231,7 @@ Windows 10/11, Windows용 GHC `9.10.3` 및 cabal(예: ghcup), Git for Windows, I
 ```powershell
 git-puller --dry-run C:\Users\user\projects
 ```
+
+## 라이선스
+
+Git Puller는 kangnodle의 독점 소프트웨어입니다. 사용 및 배포 조건은 [LICENSE](LICENSE)를 따릅니다.

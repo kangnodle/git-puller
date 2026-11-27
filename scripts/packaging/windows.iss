@@ -8,6 +8,7 @@ OutputBaseFilename=git-puller-{#ReleaseVersion}-windows-{#ReleaseArch}-setup
 WizardStyle=modern
 ArchitecturesAllowed={#WindowsArch}
 InfoBeforeFile=requirements.txt
+LicenseFile=bundle\LICENSE
 ChangesEnvironment=yes
 
 [InstallDelete]

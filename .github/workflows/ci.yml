@@ -16,5 +16,9 @@ jobs:
           ghc-version: '9.10.3'
           cabal-version: '3.16'
       - run: test "$(ghc --numeric-version)" = 9.10.3
+      - run: |
+          for package in apps/git-puller packages/*; do
+            cmp LICENSE "$package/LICENSE" || exit 1
+          done
       - run: cabal build all
       - run: cabal test all
